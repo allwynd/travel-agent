@@ -265,8 +265,9 @@ def call_gemini(prompt: str) -> str:
             }
         ],
         "generationConfig": {
-            "temperature": 0.7,
+            "temperature": 1.0,
             "responseMimeType": "application/json",
+            "thinkingLevel" : "medium",
         },
     }
 
