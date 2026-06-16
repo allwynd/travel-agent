@@ -244,9 +244,14 @@ Requirements:
 # Gemini API call
 # ---------------------------------------------------------------------------
 
-def call_gemini(prompt: str) -> str:
+def call_gemini(prompt: str, attempt: int = 1) -> str:
     """Calls the Gemini generateContent endpoint and returns the raw text
-    of the model's response."""
+    of the model's response.
+
+    Checks the finish_reason of the candidate — if it is MAX_TOKENS the
+    response was truncated and we raise immediately so the caller can retry
+    rather than trying to parse a broken JSON fragment.
+    """
 
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
@@ -266,8 +271,10 @@ def call_gemini(prompt: str) -> str:
         ],
         "generationConfig": {
             "temperature": 1.0,
+            # Generous token budget — the full JSON plan is typically
+            # 1 500–2 500 tokens. 4 096 gives plenty of headroom.
+            "maxOutputTokens": 4096,
             "responseMimeType": "application/json",
-            "thinkingLevel" : "medium",
         },
     }
 
@@ -287,13 +294,21 @@ def call_gemini(prompt: str) -> str:
     body = response.json()
 
     try:
-        candidates = body["candidates"]
-        parts = candidates[0]["content"]["parts"]
+        candidate = body["candidates"][0]
+        finish_reason = candidate.get("finishReason", "")
+        parts = candidate["content"]["parts"]
         text = "".join(part.get("text", "") for part in parts)
     except (KeyError, IndexError, TypeError) as exc:
         raise RuntimeError(
             f"Unexpected Gemini API response shape: {json.dumps(body)[:500]}"
         ) from exc
+
+    if finish_reason == "MAX_TOKENS":
+        raise RuntimeError(
+            f"Gemini truncated the response after hitting the token limit "
+            f"(attempt {attempt}). The model may need a shorter prompt or a "
+            f"larger GEMINI_MODEL that supports a bigger output window."
+        )
 
     if not text.strip():
         raise RuntimeError("Gemini API returned an empty response.")
@@ -305,29 +320,102 @@ def call_gemini(prompt: str) -> str:
 # Response parsing / validation
 # ---------------------------------------------------------------------------
 
+def _attempt_json_repair(text: str) -> dict | None:
+    """Last-resort attempt to close a truncated JSON fragment.
+
+    Gemini occasionally stops mid-object when the response is unexpectedly
+    cut short. We try to balance open brackets/braces and close them so the
+    fragment becomes parseable.  Returns the parsed dict on success or None
+    if the repair still fails.
+    """
+    # Work with everything up to and including the last complete value we
+    # can find: strip trailing commas, whitespace, and partial strings.
+    text = text.rstrip()
+
+    # Remove a dangling comma or a partial string at the very end.
+    text = re.sub(r',\s*$', '', text)
+    text = re.sub(r'"[^"]*$', '', text)   # unmatched open-quote
+    text = text.rstrip().rstrip(',')
+
+    # Count unmatched openers and close them.
+    stack = []
+    in_string = False
+    escape_next = False
+    for ch in text:
+        if escape_next:
+            escape_next = False
+            continue
+        if ch == '\\' and in_string:
+            escape_next = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch in ('{', '['):
+            stack.append('}' if ch == '{' else ']')
+        elif ch in ('}', ']') and stack:
+            stack.pop()
+
+    # Append the missing closers in reverse order.
+    repaired = text + ''.join(reversed(stack))
+
+    try:
+        return json.loads(repaired)
+    except json.JSONDecodeError:
+        return None
+
+
 def extract_json(raw_text: str) -> dict:
-    """Strips optional markdown code fences and parses the text as JSON."""
+    """Strips optional markdown code fences and parses the text as JSON.
+
+    Attempts three strategies in order:
+      1. Direct parse of the cleaned text.
+      2. Locate the outermost ``{...}`` block and parse that.
+      3. Attempt lightweight JSON repair (close unmatched brackets) and parse.
+
+    Raises RuntimeError with the original JSONDecodeError message and the
+    first 200 characters of the raw response so the Azure log gives enough
+    context to diagnose the issue.
+    """
 
     cleaned = JSON_FENCE_RE.sub("", raw_text.strip()).strip()
 
+    # Strategy 1: direct parse.
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError:
         pass
 
-    # Fallback: try to locate the outermost JSON object in the text.
+    # Strategy 2: extract the outermost {...}.
     start = cleaned.find("{")
     end = cleaned.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        candidate = cleaned[start : end + 1]
+    candidate = cleaned[start: end + 1] if (start != -1 and end > start) else ""
+
+    if candidate:
         try:
             return json.loads(candidate)
-        except json.JSONDecodeError as exc:
-            raise RuntimeError(
-                f"Failed to parse JSON from model response: {exc}"
-            ) from exc
+        except json.JSONDecodeError as first_err:
+            # Strategy 3: attempt repair on the candidate fragment.
+            repaired = _attempt_json_repair(candidate)
+            if repaired is not None:
+                logging.warning(
+                    "extract_json: used JSON repair — model response may have "
+                    "been truncated. First 200 chars: %s", raw_text[:200]
+                )
+                return repaired
 
-    raise RuntimeError("Model response did not contain valid JSON.")
+            raise RuntimeError(
+                f"Failed to parse JSON from model response "
+                f"(JSONDecodeError: {first_err}). "
+                f"Response preview: {raw_text[:200]!r}"
+            ) from first_err
+
+    raise RuntimeError(
+        f"Model response did not contain a JSON object. "
+        f"Response preview: {raw_text[:200]!r}"
+    )
 
 
 def validate_plan(plan: dict) -> None:
@@ -389,24 +477,34 @@ def plan_trip(req: func.HttpRequest) -> func.HttpResponse:
 
     prompt = build_prompt(params)
 
-    try:
-        raw_text = call_gemini(prompt)
-        plan = extract_json(raw_text)
-        validate_plan(plan)
-    except RuntimeError as exc:
-        logging.exception("plan_trip: failed to generate plan")
-        return _json_response({"success": False, "error": str(exc)}, status_code=502)
-    except Exception as exc:  # noqa: BLE001 - surface unexpected errors safely
-        logging.exception("plan_trip: unexpected error")
-        return _json_response(
-            {"success": False, "error": f"Unexpected error: {exc}"}, status_code=500
-        )
+    max_attempts = 3
+    last_error: Exception | None = None
 
-    # Ensure the top-level "success" flag is set correctly regardless of
-    # what the model returned.
-    plan["success"] = True
+    for attempt in range(1, max_attempts + 1):
+        try:
+            raw_text = call_gemini(prompt, attempt=attempt)
+            plan = extract_json(raw_text)
+            validate_plan(plan)
+            plan["success"] = True
+            return _json_response(plan, status_code=200)
+        except RuntimeError as exc:
+            last_error = exc
+            logging.warning(
+                "plan_trip: attempt %d/%d failed — %s",
+                attempt, max_attempts, exc,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logging.exception("plan_trip: unexpected error on attempt %d", attempt)
+            return _json_response(
+                {"success": False, "error": f"Unexpected error: {exc}"},
+                status_code=500,
+            )
 
-    return _json_response(plan, status_code=200)
+    logging.error("plan_trip: all %d attempts failed. Last error: %s", max_attempts, last_error)
+    return _json_response(
+        {"success": False, "error": f"Failed to generate plan after {max_attempts} attempts: {last_error}"},
+        status_code=502,
+    )
 
 
 def _json_response(payload: dict, status_code: int) -> func.HttpResponse:
