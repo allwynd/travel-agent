@@ -55,8 +55,8 @@ import logging
 import os
 import re
 
-import azure.functions as func
-import requests
+import azure.functions as func  # type: ignore
+import requests # type: ignore
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
 
@@ -120,13 +120,14 @@ def parse_request_body(req: func.HttpRequest) -> dict:
 
     if not isinstance(body, dict):
         raise ValidationError("Request body must be a JSON object.")
-
+    
+    # Extract request parameters and perform basic validation.
     origin = body.get("origin")
     destination = body.get("destination")
     travellers = body.get("travellers")
     duration_days = body.get("duration_days")
     budget_level = body.get("budget_level")
-
+    
     if not origin or not isinstance(origin, str):
         raise ValidationError("'origin' is required and must be a non-empty string.")
 
@@ -474,7 +475,17 @@ def plan_trip(req: func.HttpRequest) -> func.HttpResponse:
         return _json_response({"success": False, "error": str(exc)}, status_code=401)
     except ValidationError as exc:
         return _json_response({"success": False, "error": str(exc)}, status_code=400)
+    
+    # Check for the environment variable 'TRAVEL_AGENT_API' exists and if its 'mock' 
+    # then return a mock response for testing purposes.
+    if os.environ.get("TRAVEL_AGENT_API") == "mock":
+        logging.info("plan_trip: returning mock response due to TRAVEL_AGENT_API=mock")
 
+        # Check for requested destination in the mock response and return the appropriate mock response.
+        mock_response = invoke_mock_response(params["destination"])
+        return _json_response(mock_response, status_code=200)
+    
+    # Build the actual response from Gemini if not in mock mode.
     prompt = build_prompt(params)
 
     max_attempts = 3
@@ -513,3 +524,25 @@ def _json_response(payload: dict, status_code: int) -> func.HttpResponse:
         status_code=status_code,
         mimetype="application/json",
     )
+
+
+# get the appropriate json mock response based on the destination provided in the request parameters. 
+# If no specific mock response is found for the destination, return a generic mock response.
+def invoke_mock_response(destination: str) -> dict:
+    mock_response = {}
+
+    if destination.lower() in ["tokyo", "japan"]:
+        with open("./mock_responses/plan_nz_jp_response.json", "r", encoding="utf-8") as f:
+            mock_response = json.load(f)
+    elif destination.lower() in ["india", "mumbai", "delhi"]:
+        with open("./mock_responses/plan_nz_ind_response.json", "r", encoding="utf-8") as f:
+            mock_response = json.load(f)
+    elif destination.lower() in ["gold coast", "australia"]:
+        with open("./mock_responses/plan_nz_gc_response.json", "r", encoding="utf-8") as f:
+            mock_response = json.load(f)
+    else:
+        logging.warning("plan_trip: no specific mock response for destination '%s', returning generic mock", destination)
+        with open("./mock_responses/plan_response.json", "r", encoding="utf-8") as f:
+            mock_response = json.load(f)
+
+    return mock_response

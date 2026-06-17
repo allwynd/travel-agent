@@ -1,0 +1,157 @@
+{
+    "success": true,
+    "data": {
+        "destination": "Gold Coast, Australia",
+        "currency": "AUD",
+        "summary": "A sun-drenched coastal playground blending world-class surf beaches, thrilling theme parks, and lush rainforest hinterlands.",
+        "categories": [
+            {
+                "id": "flights",
+                "icon": "✈️",
+                "title": "Flights",
+                "subtitle": "Direct return flights from Auckland to Gold Coast",
+                "color": "#4a8fb5",
+                "totalCost": 1950,
+                "perPerson": 650,
+                "lineItems": [
+                    {
+                        "label": "Airlines",
+                        "value": "Direct return flights with Air New Zealand or Jetstar"
+                    },
+                    {
+                        "label": "Baggage",
+                        "value": "Includes 23kg checked baggage allowance per person"
+                    },
+                    {
+                        "label": "Flight Duration",
+                        "value": "Approx. 3.5 hours direct flight time"
+                    }
+                ]
+            },
+            {
+                "id": "accommodation",
+                "icon": "🏨",
+                "title": "Accommodation",
+                "subtitle": "6 nights in a mid-range self-contained apartment",
+                "color": "#2a7a6e",
+                "totalCost": 1500,
+                "perPerson": 500,
+                "lineItems": [
+                    {
+                        "label": "Type & Location",
+                        "value": "2-bedroom family apartment in Broadbeach or Surfers Paradise"
+                    },
+                    {
+                        "label": "Amenities",
+                        "value": "Full kitchen, laundry facilities, and resort-style pool access"
+                    },
+                    {
+                        "label": "Proximity",
+                        "value": "Within 5 minutes walk to the beach and G:link light rail"
+                    }
+                ]
+            },
+            {
+                "id": "food",
+                "icon": "🍜",
+                "title": "Food & Drink",
+                "subtitle": "Mix of dining out and light self-catering",
+                "color": "#d4a843",
+                "totalCost": 1470,
+                "perPerson": 490,
+                "lineItems": [
+                    {
+                        "label": "Breakfast & Snacks",
+                        "value": "Self-catering in apartment with local supermarket groceries"
+                    },
+                    {
+                        "label": "Lunch & Dinners",
+                        "value": "Casual beachside dining, surf clubs, and local night markets"
+                    },
+                    {
+                        "label": "Must-Try",
+                        "value": "Fresh local seafood at a Surf Lifesaving Club"
+                    }
+                ]
+            },
+            {
+                "id": "sightseeing",
+                "icon": "🎯",
+                "title": "Sightseeing & Activities",
+                "subtitle": "Theme parks, sky decks, and nature tours",
+                "color": "#c8522a",
+                "totalCost": 1050,
+                "perPerson": 350,
+                "lineItems": [
+                    {
+                        "label": "Theme Parks",
+                        "value": "3-day Village Roadshow pass (Movie World, Sea World, Wet'n'Wild)"
+                    },
+                    {
+                        "label": "Views",
+                        "value": "SkyPoint Observation Deck entry for 360-degree coastal views"
+                    },
+                    {
+                        "label": "Hinterland",
+                        "value": "Day trip to Springbrook National Park to see Natural Bridge"
+                    }
+                ]
+            },
+            {
+                "id": "transport",
+                "icon": "🚗",
+                "title": "Local Transport",
+                "subtitle": "Public transport passes and airport transfers",
+                "color": "#7a5a9e",
+                "totalCost": 240,
+                "perPerson": 80,
+                "lineItems": [
+                    {
+                        "label": "Public Transit",
+                        "value": "Go Card for seamless G:link light rail and bus travel"
+                    },
+                    {
+                        "label": "Airport Transfer",
+                        "value": "Rideshare (Uber/DiDi) from Gold Coast Airport to accommodation"
+                    },
+                    {
+                        "label": "Convenience",
+                        "value": "Direct public bus routes connecting theme parks and major hubs"
+                    }
+                ]
+            },
+            {
+                "id": "misc",
+                "icon": "📦",
+                "title": "Extras & Contingency",
+                "subtitle": "Insurance, roaming, and emergency buffer",
+                "color": "#5a9e6e",
+                "totalCost": 300,
+                "perPerson": 100,
+                "lineItems": [
+                    {
+                        "label": "Travel Insurance",
+                        "value": "Comprehensive cover for 3 travellers"
+                    },
+                    {
+                        "label": "Connectivity",
+                        "value": "Local eSIM data packs or mobile roaming plans"
+                    },
+                    {
+                        "label": "Emergency Fund",
+                        "value": "Cash reserves for unexpected expenses or extra souvenirs"
+                    }
+                ]
+            }
+        ],
+        "tips": [
+            "Buy your theme park tickets online in advance to secure combo deals and bypass long ticket booth queues.",
+            "Get a Go Card at the airport or tram stations for the cheapest and easiest public transport rates.",
+            "Dine at local Surf Lifesaving Clubs (SLSCs) for high-quality, reasonably priced meals directly overlooking the ocean.",
+            "Pack high-SPF sunscreen and swim shirts; the Queensland sun is exceptionally strong and will burn quickly.",
+            "Consider booking a 2-bedroom apartment with kitchen facilities; cooking even a few meals will dramatically lower your overall budget."
+        ],
+        "visaInfo": "New Zealand citizens holding a valid NZ passport are generally granted a Special Category Visa (Subclass 444) automatically on arrival in Australia, subject to meeting standard health and character requirements.",
+        "bestTimeToVisit": "May to October is the ideal time to visit, featuring comfortable, warm daytime temperatures, minimal rainfall, and lower humidity levels perfect for theme parks and outdoor activities."
+    }
+}
