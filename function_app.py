@@ -22,8 +22,8 @@ Request body (JSON):
     "origin": "Auckland, New Zealand",
     "destination": "Tokyo, Japan",
     "travellers": 2,
-    "duration_days": 7,
-    "budget_level": "Mid-range"   // "Budget" | "Mid-range" | "Luxury"
+    "duration": 7,
+    "budgetLevel": "Mid-range"   // "Budget" | "Mid" | "Luxury"
 }
 
 Response body (JSON):
@@ -67,7 +67,7 @@ app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
 DEFAULT_GEMINI_MODEL = "gemini-2.0-flash"
 DEFAULT_GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
-VALID_BUDGET_LEVELS = {"Budget", "Mid", "Luxury"}
+VALID_BUDGET_LEVELS = {"budget", "mid", "luxury"}
 
 # Categories that must always be present in the model's response, in this
 # order. Used both to build the prompt and to validate the response.
@@ -178,8 +178,8 @@ def parse_request_body(req: func.HttpRequest) -> dict:
     origin = body.get("origin")
     destination = body.get("destination")
     travellers = body.get("travellers")
-    duration_days = body.get("duration_days")
-    budget_level = body.get("budget_level")
+    duration = body.get("duration")
+    budgetLevel = body.get("budgetLevel")
     
     if not origin or not isinstance(origin, str):
         raise ValidationError("'origin' is required and must be a non-empty string.")
@@ -190,12 +190,12 @@ def parse_request_body(req: func.HttpRequest) -> dict:
     if not isinstance(travellers, int) or travellers < 1:
         raise ValidationError("'travellers' is required and must be a positive integer.")
 
-    if not isinstance(duration_days, int) or duration_days < 1:
-        raise ValidationError("'duration_days' is required and must be a positive integer.")
+    if not isinstance(duration, int) or duration < 1:
+        raise ValidationError("'duration' is required and must be a positive integer.")
 
-    if budget_level not in VALID_BUDGET_LEVELS:
+    if not budgetLevel or not isinstance(budgetLevel, str) or budgetLevel.strip().lower() not in VALID_BUDGET_LEVELS:
         raise ValidationError(
-            "'budget_level' is required and must be one of: "
+            "'budgetLevel' is required and must be one of: "
             + ", ".join(sorted(VALID_BUDGET_LEVELS))
         )
 
@@ -203,8 +203,8 @@ def parse_request_body(req: func.HttpRequest) -> dict:
         "origin": origin.strip(),
         "destination": destination.strip(),
         "travellers": travellers,
-        "duration_days": duration_days,
-        "budget_level": budget_level,
+        "duration": duration,
+        "budgetLevel": budgetLevel.strip().lower(),
     }
 
 
@@ -257,8 +257,8 @@ Trip details:
 - Origin: {params['origin']}
 - Destination: {params['destination']}
 - Number of travellers: {params['travellers']}
-- Trip duration: {params['duration_days']} day(s)
-- Budget level: {params['budget_level']}
+- Trip duration: {params['duration']} day(s)
+- Budget level: {params['budgetLevel'].capitalize()} (choose appropriate costs for this budget)
 
 Requirements:
 1. The output MUST be valid JSON matching exactly this structure and key
@@ -272,8 +272,8 @@ Requirements:
    {category_id_list}
 3. All cost figures ("totalCost", "perPerson") must be numbers (not strings)
    representing approximate NZD amounts appropriate for the given budget
-   level ({params['budget_level']}), number of travellers
-   ({params['travellers']}), and duration ({params['duration_days']} days).
+   level ({params['budgetLevel'].capitalize()}), number of travellers
+   ({params['travellers']}), and duration ({params['duration']} days).
    "totalCost" is the combined cost for all travellers for the whole trip in
    that category; "perPerson" must equal totalCost divided by the number of
    travellers.

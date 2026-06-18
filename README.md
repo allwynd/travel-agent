@@ -16,8 +16,8 @@ POST /api/planTrip
   "origin": "Auckland, New Zealand",
   "destination": "Tokyo, Japan",
   "travellers": 2,
-  "duration_days": 7,
-  "budget_level": "Mid-range"
+  "duration": 7,
+  "budgetLevel": "Mid-range"
 }
 ```
 
@@ -26,8 +26,8 @@ POST /api/planTrip
 | `origin`        | string | yes      | Departure city/country                       |
 | `destination`   | string | yes      | Destination city/country                     |
 | `travellers`    | int    | yes      | Number of travellers (≥ 1)                   |
-| `duration_days` | int    | yes      | Trip length in days (≥ 1)                    |
-| `budget_level`  | string | yes      | One of `Budget`, `Mid-range`, `Luxury`       |
+| `duration` | int    | yes      | Trip length in days (≥ 1)                    |
+| `budgetLevel`  | string | yes      | One of `Budget`, `Mid`, `Luxury`       |
 
 ### Response body (success)
 
@@ -127,8 +127,8 @@ curl -X POST http://localhost:7071/api/planTrip \
         "origin": "Auckland, New Zealand",
         "destination": "Tokyo, Japan",
         "travellers": 2,
-        "duration_days": 7,
-        "budget_level": "Mid-range"
+        "duration": 7,
+        "budgetLevel": "Mid-range"
       }'
 ```
 
