@@ -109,7 +109,6 @@ def _get_cors_origin(request_origin: str | None) -> str | None:
     """Return the Access-Control-Allow-Origin value to echo back, or None
     if the request origin is not in the allowed list."""
     raw = os.environ.get("CORS_ALLOWED_ORIGINS", "").strip()
-    logging.info("Found  environment variable 'CORS_ALLOWED_ORIGINS': %r", raw)
 
     if not raw:
         return None
@@ -129,7 +128,6 @@ def _cors_headers(request_origin: str | None) -> dict:
     """Build the CORS response headers dict for a given request origin.
     Returns an empty dict when the origin is not allowed (no headers added)."""
     allowed_origin = _get_cors_origin(request_origin)
-    logging.info("CORS: request origin %r, allowed origin %r", request_origin, allowed_origin)
 
     if not allowed_origin:
         return {}
@@ -170,9 +168,7 @@ def parse_request_body(req: func.HttpRequest) -> dict:
         raise ValidationError("Request body must be valid JSON.") from exc
 
     if not isinstance(body, dict):
-        raise ValidationError("Request body must be a JSON object.")
-    
-    logging.info("parse_request_body: received body %r", body)
+        raise ValidationError("Request body must be a JSON object.")    
     
     # Extract request parameters and perform basic validation.
     origin = body.get("origin")
