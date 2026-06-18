@@ -67,7 +67,7 @@ app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
 DEFAULT_GEMINI_MODEL = "gemini-2.0-flash"
 DEFAULT_GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
-VALID_BUDGET_LEVELS = {"Budget", "Mid-range", "Luxury"}
+VALID_BUDGET_LEVELS = {"Budget", "Mid", "Luxury"}
 
 # Categories that must always be present in the model's response, in this
 # order. Used both to build the prompt and to validate the response.
@@ -90,6 +90,57 @@ CATEGORY_TEMPLATE = {
 }
 
 JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE | re.MULTILINE)
+
+
+
+# ---------------------------------------------------------------------------
+# CORS
+# ---------------------------------------------------------------------------
+# Set the CORS_ALLOWED_ORIGINS Application Setting to a comma-separated list
+# of origins you want to permit, e.g.:
+#
+#   CORS_ALLOWED_ORIGINS=https://myapp.com,https://staging.myapp.com
+#
+# Use * to allow any origin (handy during local development — avoid in prod).
+# If the variable is absent, CORS headers are not added and browsers will
+# block cross-origin requests.
+
+def _get_cors_origin(request_origin: str | None) -> str | None:
+    """Return the Access-Control-Allow-Origin value to echo back, or None
+    if the request origin is not in the allowed list."""
+    raw = os.environ.get("CORS_ALLOWED_ORIGINS", "").strip()
+    logging.info("Found  environment variable 'CORS_ALLOWED_ORIGINS': %r", raw)
+
+    if not raw:
+        return None
+
+    allowed = {o.strip() for o in raw.split(",") if o.strip()}
+
+    if "*" in allowed:
+        return "*"
+
+    if request_origin and request_origin in allowed:
+        return request_origin
+
+    return None
+
+
+def _cors_headers(request_origin: str | None) -> dict:
+    """Build the CORS response headers dict for a given request origin.
+    Returns an empty dict when the origin is not allowed (no headers added)."""
+    allowed_origin = _get_cors_origin(request_origin)
+    logging.info("CORS: request origin %r, allowed origin %r", request_origin, allowed_origin)
+
+    if not allowed_origin:
+        return {}
+    return {
+        "Access-Control-Allow-Origin": allowed_origin,
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, x-apim-gateway-secret",
+        "Access-Control-Max-Age": "600",
+        # Vary tells CDNs / proxies that the response differs per origin.
+        "Vary": "Origin",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -120,6 +171,8 @@ def parse_request_body(req: func.HttpRequest) -> dict:
 
     if not isinstance(body, dict):
         raise ValidationError("Request body must be a JSON object.")
+    
+    logging.info("parse_request_body: received body %r", body)
     
     # Extract request parameters and perform basic validation.
     origin = body.get("origin")
@@ -462,19 +515,25 @@ def validate_plan(plan: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
-# HTTP trigger
+# HTTP triggers
 # ---------------------------------------------------------------------------
 
+# OPTIONS preflight is handled entirely by APIM (mock-response policy on
+# the OPTIONS /plan operation). The function only needs to handle POST.
 @app.route(route="planTrip", methods=["POST"])
 def plan_trip(req: func.HttpRequest) -> func.HttpResponse:
     logging.info("plan_trip: received request")
+    origin = req.headers.get("Origin")
+    cors = _cors_headers(origin)
 
     try:
         params = parse_request_body(req)
     except UnauthorisedError as exc:
-        return _json_response({"success": False, "error": str(exc)}, status_code=401)
+        logging.warning("plan_trip: unauthorized request — %s", exc)
+        return _json_response({"success": False, "error": str(exc)}, status_code=401, cors=cors)
     except ValidationError as exc:
-        return _json_response({"success": False, "error": str(exc)}, status_code=400)
+        logging.warning("plan_trip: invalid request — %s", exc)
+        return _json_response({"success": False, "error": str(exc)}, status_code=400, cors=cors)
     
     # Check for the environment variable 'TRAVEL_AGENT_API' exists and if its 'mock' 
     # then return a mock response for testing purposes.
@@ -483,7 +542,7 @@ def plan_trip(req: func.HttpRequest) -> func.HttpResponse:
 
         # Check for requested destination in the mock response and return the appropriate mock response.
         mock_response = invoke_mock_response(params["destination"])
-        return _json_response(mock_response, status_code=200)
+        return _json_response(mock_response, status_code=200, cors=cors)
     
     # Build the actual response from Gemini if not in mock mode.
     prompt = build_prompt(params)
@@ -497,7 +556,7 @@ def plan_trip(req: func.HttpRequest) -> func.HttpResponse:
             plan = extract_json(raw_text)
             validate_plan(plan)
             plan["success"] = True
-            return _json_response(plan, status_code=200)
+            return _json_response(plan, status_code=200, cors=cors)
         except RuntimeError as exc:
             last_error = exc
             logging.warning(
@@ -509,20 +568,25 @@ def plan_trip(req: func.HttpRequest) -> func.HttpResponse:
             return _json_response(
                 {"success": False, "error": f"Unexpected error: {exc}"},
                 status_code=500,
+                cors=cors,
             )
 
     logging.error("plan_trip: all %d attempts failed. Last error: %s", max_attempts, last_error)
     return _json_response(
         {"success": False, "error": f"Failed to generate plan after {max_attempts} attempts: {last_error}"},
         status_code=502,
+        cors=cors,
     )
 
 
-def _json_response(payload: dict, status_code: int) -> func.HttpResponse:
+def _json_response(payload: dict, status_code: int, cors: dict | None = None) -> func.HttpResponse:
+    headers = {"Content-Type": "application/json"}
+    if cors:
+        headers.update(cors)
     return func.HttpResponse(
         body=json.dumps(payload, ensure_ascii=False),
         status_code=status_code,
-        mimetype="application/json",
+        headers=headers,
     )
 
 
