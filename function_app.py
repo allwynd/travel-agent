@@ -23,7 +23,12 @@ Request body (JSON):
     "destination": "Tokyo, Japan",
     "travellers": 2,
     "duration": 7,
-    "budgetLevel": "Mid-range"   // "Budget" | "Mid" | "Luxury"
+    "budgetLevel": "Mid-range",   // "Budget" | "Mid" | "Luxury"
+    "currency": "JPY",                 // optional - preferred currency code
+    "travelMonth": "April",            // optional - month of travel
+    "preferredCities": ["Kyoto"],      // optional - array of city/region names
+    "preferredActivities": ["hiking"], // optional - array of activity names
+    "foodPreference": "vegetarian"     // optional - dietary/food preference
 }
 
 Response body (JSON):
@@ -176,7 +181,14 @@ def parse_request_body(req: func.HttpRequest) -> dict:
     travellers = body.get("travellers")
     duration = body.get("duration")
     budgetLevel = body.get("budgetLevel")
-    
+
+    # Optional parameters
+    currency = body.get("currency")
+    travelMonth = body.get("travelMonth")
+    preferredCities = body.get("preferredCities")
+    preferredActivities = body.get("preferredActivities")
+    foodPreference = body.get("foodPreference")
+
     if not origin or not isinstance(origin, str):
         raise ValidationError("'origin' is required and must be a non-empty string.")
 
@@ -195,12 +207,35 @@ def parse_request_body(req: func.HttpRequest) -> dict:
             + ", ".join(sorted(VALID_BUDGET_LEVELS))
         )
 
+    # Validate optional parameters if provided.
+    if currency is not None and (not isinstance(currency, str) or not currency.strip()):
+        raise ValidationError("'currency' must be a non-empty string if provided.")
+
+    if travelMonth is not None and (not isinstance(travelMonth, str) or not travelMonth.strip()):
+        raise ValidationError("'travelMonth' must be a non-empty string if provided.")
+
+    if preferredCities is not None:
+        if not isinstance(preferredCities, list) or not all(isinstance(c, str) and c.strip() for c in preferredCities):
+            raise ValidationError("'preferredCities' must be an array of non-empty strings if provided.")
+
+    if preferredActivities is not None:
+        if not isinstance(preferredActivities, list) or not all(isinstance(a, str) and a.strip() for a in preferredActivities):
+            raise ValidationError("'preferredActivities' must be an array of non-empty strings if provided.")
+
+    if foodPreference is not None and (not isinstance(foodPreference, str) or not foodPreference.strip()):
+        raise ValidationError("'foodPreference' must be a non-empty string if provided.")
+
     return {
         "origin": origin.strip(),
         "destination": destination.strip(),
         "travellers": travellers,
         "duration": duration,
         "budgetLevel": budgetLevel.strip().lower(),
+        "currency": currency.strip() if isinstance(currency, str) else None,
+        "travelMonth": travelMonth.strip() if isinstance(travelMonth, str) else None,
+        "preferredCities": [c.strip() for c in preferredCities] if preferredCities else None,
+        "preferredActivities": [a.strip() for a in preferredActivities] if preferredActivities else None,
+        "foodPreference": foodPreference.strip() if isinstance(foodPreference, str) else None,
     }
 
 
@@ -245,6 +280,21 @@ def build_prompt(params: dict) -> str:
 
     category_id_list = ", ".join(REQUIRED_CATEGORY_IDS)
 
+    # Build optional parameter lines, only including those actually provided.
+    optional_lines = []
+    if params.get("currency"):
+        optional_lines.append(f"- Preferred currency: {params['currency']} (use this as the 'currency' field and for all cost figures instead of the default NZD)")
+    if params.get("travelMonth"):
+        optional_lines.append(f"- Travel month: {params['travelMonth']} (factor in seasonality, weather, and pricing for this month)")
+    if params.get("preferredCities"):
+        optional_lines.append(f"- Preferred cities/regions: {', '.join(params['preferredCities'])} (focus the itinerary, sightseeing, and accommodation suggestions around these)")
+    if params.get("preferredActivities"):
+        optional_lines.append(f"- Preferred activities: {', '.join(params['preferredActivities'])} (prioritise these in the sightseeing category and tips)")
+    if params.get("foodPreference"):
+        optional_lines.append(f"- Food preference: {params['foodPreference']} (tailor the food category and related tips to this preference, e.g. vegetarian, vegan, halal, local cuisine)")
+
+    optional_block = "\n".join(optional_lines) if optional_lines else "- None provided. Use sensible destination-wide defaults."
+
     prompt = f"""You are a meticulous travel-planning assistant. Generate a detailed,
 realistic trip cost breakdown and travel guide as a SINGLE valid JSON object
 and nothing else (no markdown fences, no commentary, no explanations).
@@ -255,6 +305,15 @@ Trip details:
 - Number of travellers: {params['travellers']}
 - Trip duration: {params['duration']} day(s)
 - Budget level: {params['budgetLevel'].capitalize()} (choose appropriate costs for this budget)
+- Currency: {params['currency'] if params.get('currency') else 'defaults to NZD'}
+
+Additional preferences:
+{optional_block}
+
+Additional instructions:
+    - Include preferred cities if present or cover other areas of the destination if relevant.
+    - Consider the month of travel if present when estimating costs and suggesting activities (e.g. high season vs low season).
+    - Prefered activities and food should be relevant to the destination (e.g. sushi in Japan, street food in India, beach activities in Gold Coast).
 
 Requirements:
 1. The output MUST be valid JSON matching exactly this structure and key
@@ -282,7 +341,9 @@ Requirements:
    ({params['destination']}).
 7. "bestTimeToVisit" should be specific to the destination.
 8. "currency" must be the correct ISO local currency code for the
-   destination.
+   destination, unless a preferred currency was explicitly provided above, in
+   which case use that currency code instead and convert all cost figures
+   accordingly.
 9. Do not include any text before or after the JSON object. Do not wrap the
    JSON in markdown code fences.
 """
