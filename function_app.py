@@ -28,7 +28,7 @@ Request body (JSON):
     "travelMonth": "April",            // optional - month of travel
     "preferredCities": ["Kyoto"],      // optional - array of city/region names
     "preferredActivities": ["hiking"], // optional - array of activity names
-    "foodPreference": "vegetarian"     // optional - dietary/food preference
+    "foodPreferences": ["vegetarian"]   // optional - array of dietary/food preferences
 }
 
 Response body (JSON):
@@ -187,7 +187,7 @@ def parse_request_body(req: func.HttpRequest) -> dict:
     travelMonth = body.get("travelMonth")
     preferredCities = body.get("preferredCities")
     preferredActivities = body.get("preferredActivities")
-    foodPreference = body.get("foodPreference")
+    foodPreferences = body.get("foodPreferences")
 
     if not origin or not isinstance(origin, str):
         raise ValidationError("'origin' is required and must be a non-empty string.")
@@ -222,8 +222,9 @@ def parse_request_body(req: func.HttpRequest) -> dict:
         if not isinstance(preferredActivities, list) or not all(isinstance(a, str) and a.strip() for a in preferredActivities):
             raise ValidationError("'preferredActivities' must be an array of non-empty strings if provided.")
 
-    if foodPreference is not None and (not isinstance(foodPreference, str) or not foodPreference.strip()):
-        raise ValidationError("'foodPreference' must be a non-empty string if provided.")
+    if foodPreferences is not None:
+        if not isinstance(foodPreferences, list) or not all(isinstance(f, str) and f.strip() for f in foodPreferences):
+            raise ValidationError("'foodPreferences' must be an array of non-empty strings if provided.")
 
     return {
         "origin": origin.strip(),
@@ -235,7 +236,7 @@ def parse_request_body(req: func.HttpRequest) -> dict:
         "travelMonth": travelMonth.strip() if isinstance(travelMonth, str) else None,
         "preferredCities": [c.strip() for c in preferredCities] if preferredCities else None,
         "preferredActivities": [a.strip() for a in preferredActivities] if preferredActivities else None,
-        "foodPreference": foodPreference.strip() if isinstance(foodPreference, str) else None,
+        "foodPreferences": [f.strip() for f in foodPreferences] if foodPreferences else None,
     }
 
 
@@ -290,8 +291,8 @@ def build_prompt(params: dict) -> str:
         optional_lines.append(f"- Preferred cities/regions: {', '.join(params['preferredCities'])} (focus the itinerary, sightseeing, and accommodation suggestions around these)")
     if params.get("preferredActivities"):
         optional_lines.append(f"- Preferred activities: {', '.join(params['preferredActivities'])} (prioritise these in the sightseeing category and tips)")
-    if params.get("foodPreference"):
-        optional_lines.append(f"- Food preference: {params['foodPreference']} (tailor the food category and related tips to this preference, e.g. vegetarian, vegan, halal, local cuisine)")
+    if params.get("foodPreferences"):
+        optional_lines.append(f"- Food preferences: {', '.join(params['foodPreferences'])} (tailor the food category and related tips to these preferences, e.g. vegetarian, vegan, halal, local cuisine)")
 
     optional_block = "\n".join(optional_lines) if optional_lines else "- None provided. Use sensible destination-wide defaults."
 
@@ -313,7 +314,7 @@ Additional preferences:
 Additional instructions:
     - Include preferred cities if present or cover other areas of the destination if relevant.
     - Consider the month of travel if present when estimating costs and suggesting activities (e.g. high season vs low season).
-    - Prefered activities and food should be relevant to the destination (e.g. sushi in Japan, street food in India, beach activities in Gold Coast).
+    - Preferred activities and food should be relevant to the destination (e.g. sushi in Japan, street food in India, beach activities in Gold Coast).
 
 Requirements:
 1. The output MUST be valid JSON matching exactly this structure and key
