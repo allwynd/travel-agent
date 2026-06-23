@@ -155,6 +155,7 @@ class ValidationError(Exception):
 
 class UnauthorisedError(Exception):
     """Raised when the incoming request is not authorised."""
+   
 
 
 def parse_request_body(req: func.HttpRequest) -> dict:
@@ -173,8 +174,20 @@ def parse_request_body(req: func.HttpRequest) -> dict:
         raise ValidationError("Request body must be valid JSON.") from exc
 
     if not isinstance(body, dict):
-        raise ValidationError("Request body must be a JSON object.")    
+        raise ValidationError("Request body must be a JSON object.")   
+
+    # Extract request headers: 'X-User-Id', 'X-User-Email' and 'X-User-Name' and check if it exists. 
+    # If any of these headers are missing, raise a ValidationError. 
+    # These headers are expected to be set by APIM based on the authenticated user making the request.
+    user_id = req.headers.get("X-User-Id")
+    user_email = req.headers.get("X-User-Email")
+    user_name = req.headers.get("X-User-Name")
+
+    if not all([user_id, user_email, user_name]):
+        raise UnauthorisedError("Missing user identity. Direct Access is not permitted.")
     
+    logging.info("plan_trip: request from user_id=%s, user_email=%s, user_name=%s", user_id, user_email, user_name)
+
     # Extract request parameters and perform basic validation.
     origin = body.get("origin")
     destination = body.get("destination")
